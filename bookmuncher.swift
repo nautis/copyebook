@@ -287,6 +287,7 @@ struct BookMuncher {
     static func main() async throws {
         var config = parseArgs()
 
+        // Enumerate windows
         let windows: [WindowInfo]
         do {
             windows = try await enumerateWindows()
@@ -303,6 +304,7 @@ struct BookMuncher {
             exit(1)
         }
 
+        // Select target window
         let target: WindowInfo
         if let appName = config.appName {
             guard let found = findWindow(appName: appName, windows: windows) else {
@@ -320,5 +322,90 @@ struct BookMuncher {
         print("\nTarget: \(target.appName) — \"\(target.title)\"")
         print("Pages: \(config.maxPages), Delay: \(config.delay)s")
         print("Output: \(config.outputDir)")
+        print()
+
+        // Setup output
+        do {
+            try setupOutputDir(config.outputDir, saveScreenshots: config.saveScreenshots)
+        } catch {
+            print("Error creating output directory: \(error.localizedDescription)")
+            exit(1)
+        }
+
+        // Activate the target app
+        activateApp(target.scWindow)
+
+        // Brief pause to let app come to front
+        try await Task.sleep(for: .milliseconds(500))
+
+        // Capture loop
+        var previousText = ""
+        var totalChars = 0
+        var capturedPages = 0
+
+        for page in 1...config.maxPages {
+            // Capture screenshot
+            let image: CGImage
+            do {
+                image = try await captureWindow(target.scWindow)
+            } catch {
+                print("\nWarning: Failed to capture page \(page): \(error.localizedDescription)")
+                continue
+            }
+
+            // OCR
+            let text: String
+            do {
+                text = try recognizeText(in: image)
+            } catch {
+                print("\nWarning: OCR failed on page \(page): \(error.localizedDescription)")
+                if config.saveScreenshots {
+                    let screenshotPath = "\(config.outputDir)/screenshots/page-\(String(format: "%03d", page)).png"
+                    try? saveImage(image, to: screenshotPath)
+                }
+                continue
+            }
+
+            // Duplicate detection
+            if !previousText.isEmpty {
+                let similarity = textSimilarity(previousText, text)
+                if similarity >= config.similarityThreshold {
+                    print("\n\nDuplicate page detected (similarity: \(String(format: "%.0f%%", similarity * 100))). Stopping.")
+                    break
+                }
+            }
+
+            // Save outputs
+            if config.saveScreenshots {
+                let screenshotPath = "\(config.outputDir)/screenshots/page-\(String(format: "%03d", page)).png"
+                try? saveImage(image, to: screenshotPath)
+            }
+
+            do {
+                try appendText(text, pageNumber: page, to: config.outputDir)
+            } catch {
+                print("\nWarning: Failed to write text for page \(page)")
+            }
+
+            previousText = text
+            totalChars += text.count
+            capturedPages = page
+
+            // Progress
+            printProgress(current: page, total: config.maxPages, ocrChars: totalChars)
+
+            // Turn page (skip on last page)
+            if page < config.maxPages {
+                sendKeystroke(config.keyCode)
+                try await Task.sleep(for: .milliseconds(Int(config.delay * 1000)))
+            }
+        }
+
+        printComplete(
+            pages: capturedPages,
+            totalChars: totalChars,
+            outputDir: config.outputDir,
+            savedScreenshots: config.saveScreenshots
+        )
     }
 }
