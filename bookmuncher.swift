@@ -280,12 +280,30 @@ func printComplete(pages: Int, totalChars: Int, outputDir: String, savedScreensh
     }
 }
 
+// MARK: - Permissions
+
+func checkAccessibilityPermission() -> Bool {
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+    return AXIsProcessTrustedWithOptions(options)
+}
+
 // MARK: - Main
 
 @main
 struct BookMuncher {
     static func main() async throws {
+        print("BookMuncher v1.0 — macOS eBook Text Extractor")
+        print()
+
         var config = parseArgs()
+
+        // Check accessibility permission (needed for keystroke simulation)
+        if !checkAccessibilityPermission() {
+            print("Accessibility permission required for page turning.")
+            print("Grant it in: System Settings > Privacy & Security > Accessibility")
+            print("Then re-run BookMuncher.")
+            exit(1)
+        }
 
         // Enumerate windows
         let windows: [WindowInfo]
