@@ -3,6 +3,7 @@ import ScreenCaptureKit
 import CoreGraphics
 import Vision
 import AppKit
+import ImageIO
 
 // MARK: - Configuration
 
@@ -140,6 +141,142 @@ func interactiveConfig(_ config: inout Config) {
     print("Output directory (default: \(config.outputDir)): ", terminator: "")
     if let line = readLine(), !line.isEmpty {
         config.outputDir = line
+    }
+}
+
+// MARK: - Screenshot Capture
+
+func captureWindow(_ window: SCWindow) async throws -> CGImage {
+    let filter = SCContentFilter(desktopIndependentWindow: window)
+    let config = SCStreamConfiguration()
+    config.width = Int(window.frame.width) * 2   // Retina
+    config.height = Int(window.frame.height) * 2
+    config.showsCursor = false
+    config.capturesAudio = false
+    return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+}
+
+func saveImage(_ image: CGImage, to path: String) throws {
+    let url = URL(fileURLWithPath: path)
+    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+        throw NSError(domain: "BookMuncher", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create image destination"])
+    }
+    CGImageDestinationAddImage(dest, image, nil)
+    guard CGImageDestinationFinalize(dest) else {
+        throw NSError(domain: "BookMuncher", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to write PNG"])
+    }
+}
+
+// MARK: - OCR
+
+func recognizeText(in image: CGImage) throws -> String {
+    var result = ""
+    var ocrError: Error?
+
+    let request = VNRecognizeTextRequest { request, error in
+        if let error = error {
+            ocrError = error
+            return
+        }
+        guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
+        let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+        result = lines.joined(separator: "\n")
+    }
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = true
+
+    let handler = VNImageRequestHandler(cgImage: image)
+    try handler.perform([request])
+
+    if let error = ocrError { throw error }
+    return result
+}
+
+// MARK: - Keystroke Simulation
+
+func sendKeystroke(_ keyCode: CGKeyCode) {
+    let source = CGEventSource(stateID: .combinedSessionState)
+
+    guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+          let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+        print("Warning: Failed to create key event")
+        return
+    }
+
+    keyDown.post(tap: .cghidEventTap)
+    keyUp.post(tap: .cghidEventTap)
+}
+
+func activateApp(_ window: SCWindow) {
+    guard let app = window.owningApplication,
+          let runningApp = NSRunningApplication(processIdentifier: app.processID) else {
+        return
+    }
+    runningApp.activate()
+    Thread.sleep(forTimeInterval: 0.3)
+}
+
+// MARK: - Duplicate Detection
+
+func textSimilarity(_ a: String, _ b: String) -> Double {
+    guard !a.isEmpty && !b.isEmpty else { return a.isEmpty && b.isEmpty ? 1.0 : 0.0 }
+
+    func bigrams(_ s: String) -> Set<String> {
+        let chars = Array(s)
+        guard chars.count >= 2 else { return Set([s]) }
+        var set = Set<String>()
+        for i in 0..<(chars.count - 1) {
+            set.insert(String(chars[i...i+1]))
+        }
+        return set
+    }
+
+    let bigramsA = bigrams(a)
+    let bigramsB = bigrams(b)
+    let intersection = bigramsA.intersection(bigramsB).count
+    let union = bigramsA.union(bigramsB).count
+    return union == 0 ? 1.0 : Double(intersection) / Double(union)
+}
+
+// MARK: - Output
+
+func setupOutputDir(_ path: String, saveScreenshots: Bool) throws {
+    try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+    if saveScreenshots {
+        try FileManager.default.createDirectory(atPath: "\(path)/screenshots", withIntermediateDirectories: true)
+    }
+    FileManager.default.createFile(atPath: "\(path)/text.txt", contents: nil)
+}
+
+func appendText(_ text: String, pageNumber: Int, to path: String) throws {
+    let filePath = "\(path)/text.txt"
+    let separator = "\n--- Page \(pageNumber) ---\n\n"
+    let content = separator + text + "\n"
+    guard let data = content.data(using: .utf8) else { return }
+
+    if let handle = FileHandle(forWritingAtPath: filePath) {
+        handle.seekToEndOfFile()
+        handle.write(data)
+        handle.closeFile()
+    }
+}
+
+// MARK: - Progress
+
+func printProgress(current: Int, total: Int, ocrChars: Int) {
+    let width = 30
+    let filled = Int(Double(current) / Double(total) * Double(width))
+    let bar = String(repeating: "\u{2588}", count: filled) + String(repeating: "\u{2591}", count: width - filled)
+    print("\rCapturing... [\(bar)] \(current)/\(total) pages (\(ocrChars) chars)", terminator: "")
+    fflush(stdout)
+}
+
+func printComplete(pages: Int, totalChars: Int, outputDir: String, savedScreenshots: Bool) {
+    print("\n")
+    print("Done! Captured \(pages) pages (\(totalChars) characters)")
+    print("Text saved to: \(outputDir)/text.txt")
+    if savedScreenshots {
+        print("Screenshots saved to: \(outputDir)/screenshots/")
     }
 }
 
