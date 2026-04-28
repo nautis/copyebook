@@ -12,7 +12,7 @@ struct Config {
     var maxPages: Int = 50
     var keyCode: CGKeyCode = 124  // right arrow
     var delay: Double = 1.0
-    var outputDir: String = "./bookmuncher-output"
+    var outputDir: String = "./copyebook-output"
     var saveScreenshots: Bool = true
     var similarityThreshold: Double = 0.9
 }
@@ -58,16 +58,16 @@ func parseArgs() -> Config {
 
 func printUsage() {
     print("""
-    BookMuncher — Extract text from any reading app
+    copyebook — Extract text from any reading app
 
-    Usage: bookmuncher [options]
+    Usage: copyebook [options]
 
     Options:
       --app <name>          Target app name (partial match). Interactive picker if omitted.
       --pages <n>           Max pages to capture (default: 50)
       --key <key>           Page turn key: right, left, up, down, space, or keycode (default: right)
       --delay <seconds>     Wait time after page turn (default: 1.0)
-      --output <dir>        Output directory (default: ./bookmuncher-output)
+      --output <dir>        Output directory (default: ./copyebook-output)
       --no-screenshots      Don't save screenshot PNGs
       --similarity <0-1>    Duplicate detection threshold (default: 0.9)
       -h, --help            Show this help
@@ -159,11 +159,11 @@ func captureWindow(_ window: SCWindow) async throws -> CGImage {
 func saveImage(_ image: CGImage, to path: String) throws {
     let url = URL(fileURLWithPath: path)
     guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
-        throw NSError(domain: "BookMuncher", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create image destination"])
+        throw NSError(domain: "copyebook", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create image destination"])
     }
     CGImageDestinationAddImage(dest, image, nil)
     guard CGImageDestinationFinalize(dest) else {
-        throw NSError(domain: "BookMuncher", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to write PNG"])
+        throw NSError(domain: "copyebook", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to write PNG"])
     }
 }
 
@@ -212,7 +212,7 @@ func activateApp(_ window: SCWindow) {
           let runningApp = NSRunningApplication(processIdentifier: app.processID) else {
         return
     }
-    runningApp.activate()
+    runningApp.activate(options: [.activateAllWindows])
     Thread.sleep(forTimeInterval: 0.3)
 }
 
@@ -290,9 +290,9 @@ func checkAccessibilityPermission() -> Bool {
 // MARK: - Main
 
 @main
-struct BookMuncher {
+struct CopyEbook {
     static func main() async throws {
-        print("BookMuncher v1.0 — macOS eBook Text Extractor")
+        print("copyebook v1.0 — macOS eBook Text Extractor")
         print()
 
         var config = parseArgs()
@@ -301,7 +301,7 @@ struct BookMuncher {
         if !checkAccessibilityPermission() {
             print("Accessibility permission required for page turning.")
             print("Grant it in: System Settings > Privacy & Security > Accessibility")
-            print("Then re-run BookMuncher.")
+            print("Then re-run copyebook.")
             exit(1)
         }
 
@@ -414,6 +414,7 @@ struct BookMuncher {
 
             // Turn page (skip on last page)
             if page < config.maxPages {
+                activateApp(target.scWindow)
                 sendKeystroke(config.keyCode)
                 try await Task.sleep(for: .milliseconds(Int(config.delay * 1000)))
             }
