@@ -172,19 +172,20 @@ If they match, you're running the same source GitHub is publishing. The whole co
 Releases are tagged and SSH-signed with the maintainer's ed25519 key. To verify a tag locally:
 
 ```bash
-# 1. Fetch the maintainer's signing key from GitHub:
-gh api users/nautis/ssh_signing_keys --jq '.[].key' > /tmp/copyebook-signers
-# (Or grab via: https://github.com/nautis.keys — same key as authentication.)
+# 1. Fetch the maintainer's public key from GitHub (same key used for auth):
+curl -s https://github.com/nautis.keys | head -1 > /tmp/copyebook-key
 
-# 2. Build an allowed_signers file:
-echo "nautis@github $(cat /tmp/copyebook-signers)" > .git/allowed_signers
+# 2. Build an allowed_signers file inside the repo:
+echo "nautis@github $(cat /tmp/copyebook-key)" > .git/allowed_signers
 git config gpg.ssh.allowedSignersFile .git/allowed_signers
 
 # 3. Verify a tag:
 git verify-tag v0.1.0
 ```
 
-A successful verification prints `Good "git" signature for nautis@github`.
+A successful verification prints `Good "git" signature for nautis@github with ED25519 key`.
+
+(GitHub's own "Verified" badge requires the maintainer to also upload the key under *SSH signing keys* in account settings — separate from the auth key. The cryptographic guarantee is the same with or without the badge.)
 
 ## License
 
