@@ -1,3 +1,4 @@
 copyebook
 copyebook-output/
 *.png
+.gstack/

@@ -21,30 +21,38 @@ func parseArgs() -> Config {
     var config = Config()
     let args = CommandLine.arguments
     var i = 1
+    func requireValue(for flag: String) -> String {
+        guard i + 1 < args.count else {
+            print("Error: \(flag) requires a value.")
+            printUsage(); exit(1)
+        }
+        i += 1
+        return args[i]
+    }
     while i < args.count {
         switch args[i] {
         case "--app":
-            i += 1; config.appName = args[i]
+            config.appName = requireValue(for: "--app")
         case "--pages":
-            i += 1; config.maxPages = Int(args[i]) ?? 50
+            config.maxPages = Int(requireValue(for: "--pages")) ?? 50
         case "--key":
-            i += 1
-            switch args[i].lowercased() {
+            let key = requireValue(for: "--key")
+            switch key.lowercased() {
             case "space": config.keyCode = 49
             case "left": config.keyCode = 123
             case "right": config.keyCode = 124
             case "down": config.keyCode = 125
             case "up": config.keyCode = 126
-            default: config.keyCode = CGKeyCode(args[i]) ?? 124
+            default: config.keyCode = CGKeyCode(key) ?? 124
             }
         case "--delay":
-            i += 1; config.delay = Double(args[i]) ?? 1.0
+            config.delay = Double(requireValue(for: "--delay")) ?? 1.0
         case "--output":
-            i += 1; config.outputDir = args[i]
+            config.outputDir = requireValue(for: "--output")
         case "--no-screenshots":
             config.saveScreenshots = false
         case "--similarity":
-            i += 1; config.similarityThreshold = Double(args[i]) ?? 0.9
+            config.similarityThreshold = Double(requireValue(for: "--similarity")) ?? 0.9
         case "--help", "-h":
             printUsage(); exit(0)
         default:

@@ -30,12 +30,28 @@ That produces a single binary at `./copyebook`. No dependencies, no package mana
 
 ## First run — permissions
 
-copyebook needs two macOS permissions, both granted from System Settings → Privacy & Security:
+copyebook needs two macOS permissions. Both are powerful, both belong to the app that *launches* copyebook (Terminal.app, iTerm, Ghostty, etc.) — not to copyebook itself. Be deliberate about granting them.
 
-1. **Accessibility** — to send the arrow-key/space keystroke that turns the page. macOS prompts on first run.
-2. **Screen Recording** — to capture the window. You must add your terminal app (Terminal.app, iTerm, Ghostty, etc.) manually; macOS will not auto-prompt this one.
+### What you're granting
 
-The permission belongs to the app that *launches* copyebook. If you run it from Terminal.app, Terminal.app needs Screen Recording. If you run it from iTerm, iTerm does. Re-launch the terminal after granting.
+1. **Accessibility** — lets the launching app send synthetic keystrokes to other apps. This is the same capability a keylogger uses. copyebook uses it for one thing: to press the arrow key that turns a page in your reading app. While the permission is on, anything else launched from that terminal can also send keystrokes systemwide.
+2. **Screen Recording** — lets the launching app read pixel content from any visible window. This is the same capability a screen recorder uses. copyebook uses it to capture frames of the reading-app window for OCR. While the permission is on, anything else launched from that terminal can also capture any window on your screen.
+
+### Granting
+
+- Grant from System Settings → Privacy & Security → Accessibility / Screen Recording.
+- macOS will auto-prompt for Accessibility on first run. Screen Recording must be added manually.
+- Re-launch the terminal after granting (macOS reads the permission at launch time).
+
+### Revoking
+
+When you're done capturing, turn the permissions off:
+
+1. System Settings → Privacy & Security → **Accessibility** → toggle the launching terminal app **off** (or click the minus button to remove it entirely).
+2. System Settings → Privacy & Security → **Screen Recording** → same.
+3. Restart the terminal.
+
+You'll re-grant the next time you use copyebook. That's the right tradeoff — these permissions persist until revoked, and a terminal app is a broad surface to leave keylogger-equivalent rights attached to.
 
 ## Usage
 
@@ -135,6 +151,40 @@ for line in open(sys.argv[1]):
     sys.stdout.write(line)
 " ~/Downloads/my-book/text.txt > ~/Downloads/my-book-clean.txt
 ```
+
+## Verifying what you cloned
+
+You're about to grant a binary the ability to log keystrokes and capture any window on your screen. Before you do, verify the source.
+
+### Cheap and effective
+
+After cloning, check that the commit hash on disk matches the commit on GitHub:
+
+```bash
+git rev-parse HEAD
+# Open https://github.com/nautis/copyebook/commits/main and compare the top commit hash.
+```
+
+If they match, you're running the same source GitHub is publishing. The whole codebase is one Swift file (`copyebook.swift`, ~430 lines). It's small enough to read.
+
+### Signed tags
+
+Releases are tagged and SSH-signed with the maintainer's ed25519 key. To verify a tag locally:
+
+```bash
+# 1. Fetch the maintainer's signing key from GitHub:
+gh api users/nautis/ssh_signing_keys --jq '.[].key' > /tmp/copyebook-signers
+# (Or grab via: https://github.com/nautis.keys — same key as authentication.)
+
+# 2. Build an allowed_signers file:
+echo "nautis@github $(cat /tmp/copyebook-signers)" > .git/allowed_signers
+git config gpg.ssh.allowedSignersFile .git/allowed_signers
+
+# 3. Verify a tag:
+git verify-tag v0.1.0
+```
+
+A successful verification prints `Good "git" signature for nautis@github`.
 
 ## License
 
